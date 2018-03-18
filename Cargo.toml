@@ -1,0 +1,6 @@
+[package]
+name = "aperture-note-core"
+version = "0.1.0"
+authors = ["Pelly Ryu <pelly.ryu@gmail.com>"]
+
+[dependencies]
