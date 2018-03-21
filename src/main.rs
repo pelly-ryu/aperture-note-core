@@ -1,43 +1,54 @@
-use std::fs::File;
-use std::io::prelude::*;
-use std::net::TcpListener;
-use std::net::TcpStream;
-use std::thread;
-use std::time::Duration;
+//! A Hello World example application for working with Gotham.
 
-fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+extern crate futures;
+extern crate gotham;
+extern crate hyper;
+extern crate mime;
 
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
+use hyper::{Response, StatusCode};
 
-        handle_connection(stream);
-    }
+use gotham::http::response::create_response;
+use gotham::state::State;
+
+/// Create a `Handler` which is invoked when responding to a `Request`.
+///
+/// How does a function become a `Handler`?.
+/// We've simply implemented the `Handler` trait, for functions that match the signature used here,
+/// within Gotham itself.
+pub fn say_hello(state: State) -> (State, Response) {
+    let res = create_response(
+        &state,
+        StatusCode::Ok,
+        Some((String::from("Hello World!").into_bytes(), mime::TEXT_PLAIN)),
+    );
+
+    (state, res)
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 512];
-    stream.read(&mut buffer).unwrap();
+/// Start a server and call the `Handler` we've defined above for each `Request` we receive.
+pub fn main() {
+    let addr = "127.0.0.1:7878";
+    println!("Listening for requests at http://{}", addr);
+    gotham::start(addr, || Ok(say_hello))
+}
 
-    let get = b"GET / HTTP/1.1\r\n";
-    let sleep = b"GET /sleep HTTP/1.1\r\n";
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gotham::test::TestServer;
 
-    let (status_line, filename) = if buffer.starts_with(get) {
-        ("HTTP/1.1 200 OK\r\n\r\n", "hello.html")
-    } else if buffer.starts_with(sleep) {
-        thread::sleep(Duration::from_secs(5));
-        ("HTTP/1.1 200 OK\r\n\r\n", "hello.html")
-    } else {
-        ("HTTP/1.1 404 NOT FOUND\r\n\r\n", "404.html")
-    };
+    #[test]
+    fn receive_hello_world_response() {
+        let test_server = TestServer::new(|| Ok(say_hello)).unwrap();
+        let response = test_server
+            .client()
+            .get("http://localhost")
+            .perform()
+            .unwrap();
 
-    let mut file = File::open(filename).unwrap();
-    let mut contents = String::new();
+        assert_eq!(response.status(), StatusCode::Ok);
 
-    file.read_to_string(&mut contents).unwrap();
-
-    let response = format!("{}{}", status_line, contents);
-
-    stream.write(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
+        let body = response.read_body().unwrap();
+        assert_eq!(&body[..], b"Hello World!");
+    }
 }
